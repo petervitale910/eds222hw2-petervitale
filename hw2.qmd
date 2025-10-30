@@ -1,0 +1,146 @@
+---
+title: "EDS 222: Homework 2"
+author: "Your Name Here"
+---
+
+## Goals
+
+In this homework you will:
+
+-   Use **simulation** to generate samples from a known population.
+
+-   Apply randomization and mathematical techniques to estimate **p-values** and **confidence intervals**.
+
+-   **Visualize** the predictions of models with uncertainty.
+
+```{r}
+#| label: setup
+#| message: false
+
+library(tidyverse)
+set.seed(123)
+theme_set(theme_bw(14))
+
+```
+
+## Create your population and samples
+
+Imagine a fictitious population of lakes. Each lake has both *native cutthroat trout and invasive lake trout*. Lake trout prey on cutthroat trout, suppressing the abundance of the native species.
+
+Simulate a population of 100,000 lakes. Each lake should have a random number of lake trout in it. In this population, lakes hold an average of 100 lake trout with a standard deviation of 20. Assume the distribution of lake trout is normal. When there are no lake trout, the average lake holds 800 cutthroat trout. On average, each additional lake trout reduces the cutthroat trout population by 2.5. The standard deviation of cutthroat trout in a lake is 120.
+
+From a coding perspective, make your lake population should a data frame with one row per lake and columns for the abundance of lake trout and cutthroat trout. Call this data frame `lake_pop`. **Simulate the population according to the description above, then make a scatter plot showing the relationship between lake and cutthroat trout**.
+
+```{r}
+#| label: sim-pop
+
+```
+
+```{r}
+#| label: fig-pop
+
+```
+
+From this population, draw three samples with 30 observations each. Call them `lake_spl1`, `lake_spl2`, and `lake_spl3`.
+
+**What's the coefficient for the effect of lake trout on cutthroat trout in your population? What is it in each of your three samples?**
+
+Use `lm()` to estimate each of the coefficients.
+
+```{r}
+#| label: pop-spl-coefs
+
+```
+
+## Do lake trout affect cutthroat trout?
+
+In our population of lakes, the abundance of lake trout has a *real effect* on cutthroat trout. We know this to be true because that's how we defined the population. But that doesn't mean that every sample can reject the null hypothesis. By random chance, you just might draw a sample that's too probable under the null hypothesis to reject.
+
+Failing to reject a null hypothesis when the effect is real is a limitation of small samples. In this part of the homework, you'll demonstrate that larger samples are more likely to correctly reject the null hypothesis using mathematical models for inference.
+
+::: callout-tip
+You've seen p values in model summary tables. Here's one highlighted in a model fit to the Palmer penguins data.
+
+![](images/coef_summary.png){width="500"}
+
+That coefficient table, including the p values, is accessible through the model summary object. Here's an example of how to get the p value for `body_mass_g` in the model above.
+
+```         
+# Fit the model
+penguin_model <- lm(flipper_length_mm ~ body_mass_g, penguins)
+# Get the model summary
+penguin_summary <- summary(penguin_model)
+# penguin_summary$coefficients is the coefficient table
+penguin_summary$coefficients
+# body_mass_g is the second coef (after the intercept) and the p
+# value is in the fourth column.
+body_mass_g_pval <- penguin_summary$coefficients[2, 4]
+```
+:::
+
+Write a function called `p_dist` that takes one parameter, `n`, representing the size of the sample. Inside `p_dist`, use `map_dbl()` to create a vector of 1,000 p values. Generate your p values by doing the following:
+
+1.  Draw a sample of `n` observations from `lake_pop`
+2.  Fit a linear model to the sample
+3.  Extract the p-value of the lake trout coefficient
+
+Call `p_dist` for `n`'s of 30, 50, and 100. **What fraction of the p values are less than 0.05 for each sample size?**
+
+```{r}
+#| label: small-n-pval
+
+```
+
+Consider your results in the context of a lake resource manager. This resource manager is trying to decide if increasing lake trout abundances are causing a decline in cutthroat trout. They collect data from thirty lakes, fit a linear model, and find a p value for the coefficient of lake trout of 0.11. The manager says "With a p value this high, I don't think lake trout are causing the decline." **How would you respond to the manager's interpretation?**
+
+## How much do lake trout affect cutthroat trout?
+
+Now we'll answer the question "how much do lake trout affect cutthroat trout?" with a confidence interval. This part of the homework will use bootstrapping to estimate the confidence interval for the lake trout coefficient. You'll repeat this process for both a large and a small sample, comparing how the sample size affects the width of the confidence interval.
+
+In the following code chunk, draw a sample from `lake_pop` with 100 observations in it. Call it `big_sample`. Use `map_dbl()` to make a vector called `big_boot` with 1,000 bootstrap samples of the lake trout coefficient. Make each bootstrap sample by:
+
+1.  Draw a sample from `big_sample` *with replacement*
+2.  Fit a linear model to the sample with replacement
+3.  Return the lake trout coefficient
+
+Use the `quantile()` function on **`big_boot`** to construct the 95% CI of the lake trout coefficient.
+
+Then, repeat this process for a smaller sample size. Draw `small_sample` with 30 observations, use it to make `small_boot`, and construct the 95% CI of the lake trout coefficient.
+
+**Compare the CIs for the two samples. How did the width of the CI change from the large to the small sample?**
+
+```{r}
+#| label: boot-beta1
+
+```
+
+## Visualizing the effect of lake trout on cutthroat
+
+In the final part of this homework, you'll visualize the CI of the response (cutthroat trout) with respect to the predictor (lake trout). This CI provides an informative view of the uncertainty in the sample, because it integrates the potential sampling error in both coefficients *and* the variation in the predictor. Consider the following question:
+
+"What's the average cutthroat abundance in a lake with 80 lake trout?"
+
+The CIs of the coefficients alone are insufficient to provide a useful answer. But the CI of the response provides exactly that.
+
+We will build the CI of the response manually when we get to more complex models in the next theme of the course. For now, you'll use `geom_smooth()` as a shortcut, and focus on interpretation of the figure. `geom_smooth()` takes three parameters relevant to this CI:
+
+-   `method` specifies what model to use. Set it to `"lm"` to tell it to use a linear model.
+
+-   `formula` specifies the model formula. Set it to `y ~ x` to tell it we're using 1 predictor and response.
+
+-   `se` specifies whether to display the CI of the response. Set it to `TRUE`.
+
+Plot `big_sample` as a scatter plot. Add the best fit line and CI of the response using `geom_smooth()`. Repeat the process for `small_sample`. Use the plots to answer the following questions.
+
+```{r}
+#| label: ci-mean
+
+```
+
+**What is the expected (average) abundance of cutthroat trout in a lake with 80 lake trout according to the model fit to the *larger* sample?**
+
+**Same question, but according to the model fit to the *smaller* sample?**
+
+**How wide are the 95% CIs for cutthroat trout abundance in lakes with 80 lake trout in both models?**
+
+**Consider the mean response in the population itself (the "true" mean response). This is the line defined by the population parameters** $\beta_0$ **and** $\beta_1$**.** **Are 95% CIs constructed from small sample models more, less, or equally likely to cover the population mean response than large sample models?**
