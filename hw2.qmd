@@ -33,11 +33,26 @@ From a coding perspective, make your lake population should a data frame with on
 
 ```{r}
 #| label: sim-pop
+lake_trout <- rnorm(100000, 100, 20)
+
+cutthroat <- rnorm(100000, mean = 800 - 2.5*lake_trout, sd = 120)
+
+trout_sp <- data.frame(lake_trout, cutthroat)
 
 ```
 
 ```{r}
 #| label: fig-pop
+#| fig-cap: ' Plot of 300 random points (originally 100,000 points)'
+trout_sample  <- trout_sp[sample(nrow(trout_sp), 300), ]
+
+
+ggplot(trout_sample, aes(x = lake_trout, y = cutthroat))+
+  geom_point()+
+  labs(x = 'Lake Trout',
+       y = 'Cutthroat Trout',
+       title = 'Sample of Relationship between Trout species')+
+  ggthemes::theme_clean()
 
 ```
 
@@ -49,6 +64,27 @@ Use `lm()` to estimate each of the coefficients.
 
 ```{r}
 #| label: pop-spl-coefs
+
+
+sample_list <- map(1:3, ~{
+
+ assign(paste0('lake_spl',.x), slice_sample(trout_sp, n= 30, replace = FALSE), envir = .GlobalEnv)
+})
+
+for (i in seq_along(sample_list)) {
+
+lake_lm <- lm(cutthroat ~ lake_trout, data = sample_list[[i]])
+
+
+print(paste0('Lake_spl',{i}, ' coefficients are:'))
+print(coef(lake_lm))
+}
+
+pop_lm <- lm(cutthroat ~ lake_trout, data = trout_sp)
+
+
+print('Population coefficients are:')
+print(coef(pop_lm))
 
 ```
 
@@ -89,9 +125,31 @@ Call `p_dist` for `n`'s of 30, 50, and 100. **What fraction of the p values are 
 ```{r}
 #| label: small-n-pval
 
+p_dist <- function(n){
+  map_dbl(1:1000, ~{
+trout_sample  <- trout_sp[sample(nrow(trout_sp), n), ]
+trout_lm <- lm(cutthroat ~ lake_trout, trout_sample)
+trout_lm_summary <- summary(trout_lm)
+trout_coefs <- trout_lm_summary$coefficients[2, 4]
+return(trout_coefs)
+})
+}
+
+
+n_30_fraction <- sum(p_dist(30) < .05) / length(p_dist(30))
+
+n_50_fraction <- sum(p_dist(50) < .05) / length(p_dist(50))
+
+n_100_fraction <- sum(p_dist(100) < .05) / length(p_dist(100))
+
+print(paste('At n = 30 the sample results in p_values below .05 in', n_30_fraction * 100,'% of the cases'))
+print(paste('At n = 50 the sample results in p_values below .05 in', n_50_fraction * 100,'% of the cases'))
+print(paste('At n = 100 the sample results in p_values below .05 in', n_100_fraction * 100,'% of the cases'))
 ```
 
 Consider your results in the context of a lake resource manager. This resource manager is trying to decide if increasing lake trout abundances are causing a decline in cutthroat trout. They collect data from thirty lakes, fit a linear model, and find a p value for the coefficient of lake trout of 0.11. The manager says "With a p value this high, I don't think lake trout are causing the decline." **How would you respond to the manager's interpretation?**
+
+I would respond that the initial interpretation makes sense, however thirty lakes may not be enough to see a full relationship. With sample data we can see that the n(30) leads to roughly half of the p-values being higher than .05. 
 
 ## How much do lake trout affect cutthroat trout?
 
@@ -112,6 +170,39 @@ Then, repeat this process for a smaller sample size. Draw `small_sample` with 30
 ```{r}
 #| label: boot-beta1
 
+big_sample  <- trout_sp[sample(nrow(trout_sp), 100), ]
+
+big_boot <- map_dbl(1:1000, function(i){
+boot_sample = sample(nrow(big_sample), 100, replace = TRUE)
+one_boot <- big_sample[boot_sample, ]
+trout_lm <- lm(cutthroat ~ lake_trout, one_boot)
+trout_lm_summary <- summary(trout_lm)
+trout_coefs <- trout_lm_summary$coefficients[2, 1]
+return(trout_coefs)
+  })
+
+small_sample <- trout_sp[sample(nrow(trout_sp), 30), ]
+
+small_boot <- map_dbl(1:1000, function(i){
+boot_sample = sample(nrow(big_sample), 30, replace = TRUE)
+one_boot <- big_sample[boot_sample, ]
+trout_lm <- lm(cutthroat ~ lake_trout, one_boot)
+trout_lm_summary <- summary(trout_lm)
+trout_coefs <- trout_lm_summary$coefficients[2, 1]
+return(trout_coefs)
+  })
+
+print('The 95% ci for the n_100 bootstrap is between: ')
+print(paste(quantile(big_boot, probs = .025),'and', quantile(big_boot, probs = .975)))
+
+print('The 95% ci for the n_30 bootstrap is between: ')
+print(paste(quantile(small_boot, probs = .025),'and', quantile(small_boot, probs = .975)))
+
+print('The widths of the two sample 95% CI are:')
+print(paste0('Big: ', 
+             quantile(big_boot, probs = .975)- quantile(big_boot, probs = .025)))
+print(paste0('Small: ',
+             quantile(small_boot, probs = .975) - quantile(small_boot, probs = .025)))
 ```
 
 ## Visualizing the effect of lake trout on cutthroat
@@ -132,15 +223,44 @@ We will build the CI of the response manually when we get to more complex models
 
 Plot `big_sample` as a scatter plot. Add the best fit line and CI of the response using `geom_smooth()`. Repeat the process for `small_sample`. Use the plots to answer the following questions.
 
-```{r}
+```{r fig.width=6, fig.height=7}
 #| label: ci-mean
 
+library(patchwork)
+big_sample_plot <-  ggplot(big_sample, aes(lake_trout, cutthroat))+
+  geom_point()+
+  geom_smooth(method = 'lm', formula = y~x, se = TRUE)+
+  labs( x= 'Lake Trout (Count)',
+        y = 'Cutthroat Trout (Count)',
+        title = 'Big Sample of Trout Species')+
+  ggthemes::theme_clean()
+  
+  
+small_sample_plot <-  ggplot(small_sample, aes(lake_trout, cutthroat))+
+  geom_point()+
+  geom_smooth(method = 'lm', formula = y~x, se = TRUE)+
+  labs( x= 'Lake Trout (Count)',
+        y = 'Cutthroat Trout (Count)',
+        title = 'Small Sample of Trout Species')+
+  ggthemes::theme_clean()
+
+small_sample_plot/big_sample_plot
 ```
 
 **What is the expected (average) abundance of cutthroat trout in a lake with 80 lake trout according to the model fit to the *larger* sample?**
 
+-  Visually it is around 590
+
 **Same question, but according to the model fit to the *smaller* sample?**
+
+-  Visually it is around 580
 
 **How wide are the 95% CIs for cutthroat trout abundance in lakes with 80 lake trout in both models?**
 
+-  Big Model: visually the 95% CI is between 570 and 610
+
+-  Small Model: visually the 95% CI is between 500 and 660
+
 **Consider the mean response in the population itself (the "true" mean response). This is the line defined by the population parameters** $\beta_0$ **and** $\beta_1$**.** **Are 95% CIs constructed from small sample models more, less, or equally likely to cover the population mean response than large sample models?**
+
+- Small sample means are less likely to cover the population mean. The larger quantity of values in the large sample, means more about the model can be explained, leading to the confidence in our population mean with a smaller range. 
